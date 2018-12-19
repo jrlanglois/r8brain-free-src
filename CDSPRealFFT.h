@@ -1,5 +1,3 @@
-//$ nocpp
-
 /**
  * @file CDSPRealFFT.h
  *
@@ -18,11 +16,12 @@
 
 #include "r8bbase.h"
 
-#if !R8B_IPP
-	#include "fft4g.h"
-#endif // !R8B_IPP
+#if ! R8B_IPP
+#include "fft4g.h"
+#endif
 
-namespace r8b {
+namespace r8b
+{
 
 /**
  * @brief Real-valued FFT transform class.
@@ -45,356 +44,308 @@ namespace r8b {
 
 class CDSPRealFFT : public R8B_BASECLASS
 {
-	R8BNOCTOR( CDSPRealFFT );
-
-	friend class CDSPRealFFTKeeper;
-
 public:
-	/**
-	 * @return A multiplication constant that should be used after inverse
-	 * transform to obtain a correct value scale.
-	 */
+    /**
+     * @return A multiplication constant that should be used after inverse
+     * transform to obtain a correct value scale.
+     */
 
-	double getInvMulConst() const
-	{
-		return( InvMulConst );
-	}
+    double getInvMulConst() const
+    {
+        return InvMulConst;
+    }
 
-	/**
-	 * @return The length (the number of real values in a transform) of *this
-	 * FFT object, expressed as Nth power of 2.
-	 */
+    /**
+     * @return The length (the number of real values in a transform) of *this
+     * FFT object, expressed as Nth power of 2.
+     */
 
-	int getLenBits() const
-	{
-		return( LenBits );
-	}
+    int getLenBits() const
+    {
+        return LenBits;
+    }
 
-	/**
-	 * @return The length (the number of real values in a transform) of *this
-	 * FFT object.
-	 */
+    /**
+     * @return The length (the number of real values in a transform) of *this
+     * FFT object.
+     */
 
-	int getLen() const
-	{
-		return( Len );
-	}
+    int getLen() const
+    {
+        return Len;
+    }
 
-	/**
-	 * Function performs in-place forward FFT.
-	 *
-	 * @param[in,out] p Pointer to data block to transform, length should be
-	 * equal to *this object's getLen().
-	 */
+    /**
+     * Function performs in-place forward FFT.
+     *
+     * @param[in,out] p Pointer to data block to transform, length should be
+     * equal to *this object's getLen().
+     */
 
-	void forward( double* const p ) const
-	{
-	#if R8B_IPP
+    void forward(double *const p) const
+    {
+#if R8B_IPP
+        ippsFFTFwd_RToPerm_64f(p, p, SPtr, WorkBuffer);
+#else
+        ooura_fft::rdft(Len, 1, p, wi.getPtr(), wd.getPtr());
+#endif
+    }
 
-		ippsFFTFwd_RToPerm_64f( p, p, SPtr, WorkBuffer );
+    /**
+     * Function performs in-place inverse FFT.
+     *
+     * @param[in,out] p Pointer to data block to transform, length should be
+     * equal to *this object's getLen().
+     */
 
-	#else // R8B_IPP
+    void inverse(double *const p) const
+    {
+#if R8B_IPP
+        ippsFFTInv_PermToR_64f(p, p, SPtr, WorkBuffer);
+#else
+        ooura_fft::rdft(Len, -1, p, wi.getPtr(), wd.getPtr());
+#endif
+    }
 
-		ooura_fft :: rdft( Len, 1, p, wi.getPtr(), wd.getPtr() );
+    /**
+     * Function multiplies two complex-valued data blocks and places result in
+     * a new data block. Length of all data blocks should be equal to *this
+     * object's block length. Input blocks should have been produced with the
+     * forward() function of *this object.
+     *
+     * @param ip1 Input data block 1.
+     * @param ip2 Input data block 2.
+     * @param[out] op Output data block, should not be equal to ip1 nor ip2.
+     */
 
-	#endif // R8B_IPP
-	}
+    void multiplyBlocks(const double *const ip1, const double *const ip2, double *const op) const
+    {
+#if R8B_IPP
+        ippsMulPerm_64f((Ipp64f *)ip1, (Ipp64f *)ip2, (Ipp64f *)op, Len);
+#else
+        op[0] = ip1[0] * ip2[0];
+        op[1] = ip1[1] * ip2[1];
 
-	/**
-	 * Function performs in-place inverse FFT.
-	 *
-	 * @param[in,out] p Pointer to data block to transform, length should be
-	 * equal to *this object's getLen().
-	 */
+        int i = 2;
 
-	void inverse( double* const p ) const
-	{
-	#if R8B_IPP
+        while (i < Len)
+        {
+            op[i] = ip1[i] * ip2[i] - ip1[i + 1] * ip2[i + 1];
+            op[i + 1] = ip1[i] * ip2[i + 1] + ip1[i + 1] * ip2[i];
+            i += 2;
+        }
+#endif
+    }
 
-		ippsFFTInv_PermToR_64f( p, p, SPtr, WorkBuffer );
+    /**
+     * Function is similar to the multiplyBlocks() function, but instead of
+     * replacing data in the output buffer, the data is summed with the output
+     * buffer.
+     *
+     * @param ip1 Input data block 1.
+     * @param ip2 Input data block 2.
+     * @param[out] op Output data block, should not be equal to ip1 nor ip2.
+     */
 
-	#else // R8B_IPP
+    void multiplyBlocksAdd(const double *const ip1, const double *const ip2, double *const op) const
+    {
+        op[0] += ip1[0] * ip2[0];
+        op[1] += ip1[1] * ip2[1];
 
-		ooura_fft :: rdft( Len, -1, p, wi.getPtr(), wd.getPtr() );
+#if R8B_IPP
+        ippsAddProduct_64fc((const Ipp64fc *)(ip1 + 2),
+                            (const Ipp64fc *)(ip2 + 2), (Ipp64fc *)(op + 2),
+                            (Len >> 1) - 1);
+#else
+        int i = 2;
 
-	#endif // R8B_IPP
-	}
+        while (i < Len)
+        {
+            op[i] += ip1[i] * ip2[i] - ip1[i + 1] * ip2[i + 1];
+            op[i + 1] += ip1[i] * ip2[i + 1] + ip1[i + 1] * ip2[i];
+            i += 2;
+        }
+#endif
+    }
 
-	/**
-	 * Function multiplies two complex-valued data blocks and places result in
-	 * a new data block. Length of all data blocks should be equal to *this
-	 * object's block length. Input blocks should have been produced with the
-	 * forward() function of *this object.
-	 *
-	 * @param ip1 Input data block 1.
-	 * @param ip2 Input data block 2.
-	 * @param[out] op Output data block, should not be equal to ip1 nor ip2.
-	 */
+    /**
+     * Function multiplies two complex-valued data blocks in-place. Length of
+     * both data blocks should be equal to *this object's block length. Blocks
+     * should have been produced with the forward() function of *this object.
+     *
+     * @param ip Input data block 1.
+     * @param[in,out] op Output/input data block 2.
+     */
+    void multiplyBlocks(const double *const ip, double *const op) const
+    {
+#if R8B_IPP
+        ippsMulPerm_64f((Ipp64f *)op, (Ipp64f *)ip, (Ipp64f *)op, Len);
+#else
+        op[0] *= ip[0];
+        op[1] *= ip[1];
 
-	void multiplyBlocks( const double* const ip1, const double* const ip2,
-		double* const op ) const
-	{
-	#if R8B_IPP
+        int i = 2;
 
-		ippsMulPerm_64f( (Ipp64f*) ip1, (Ipp64f*) ip2, (Ipp64f*) op, Len );
+        while (i < Len)
+        {
+            const double t = op[i] * ip[i] - op[i + 1] * ip[i + 1];
+            op[i + 1] = op[i] * ip[i + 1] + op[i + 1] * ip[i];
+            op[i] = t;
+            i += 2;
+        }
+#endif
+    }
 
-	#else // R8B_IPP
+    /**
+     * Function multiplies two complex-valued data blocks in-place,
+     * considering that the "ip" block contains "zero-phase" response. Length
+     * of both data blocks should be equal to *this object's block length.
+     * Blocks should have been produced with the forward() function of *this
+     * object.
+     *
+     * @param ip Input data block 1, "zero-phase" response.
+     * @param[in,out] op Output/input data block 2.
+     */
+    void multiplyBlocksZ(const double *const ip, double *const op) const
+    {
+        op[0] *= ip[0];
+        op[1] *= ip[1];
 
-		op[ 0 ] = ip1[ 0 ] * ip2[ 0 ];
-		op[ 1 ] = ip1[ 1 ] * ip2[ 1 ];
+        int i = 2;
 
-		int i = 2;
+        while (i < Len)
+        {
+            op[i] *= ip[i];
+            op[i + 1] *= ip[i];
+            i += 2;
+        }
+    }
 
-		while( i < Len )
-		{
-			op[ i ] = ip1[ i ] * ip2[ i ] - ip1[ i + 1 ] * ip2[ i + 1 ];
-			op[ i + 1 ] = ip1[ i ] * ip2[ i + 1 ] + ip1[ i + 1 ] * ip2[ i ];
-			i += 2;
-		}
+    /**
+     * Function performs in-place spectrum squaring. May cause aliasing
+     * if the filter was not zero-padded before the forward() function call.
+     *
+     * @param[in,out] p Pointer to data block to square, length should be
+     * equal to *this object's getLen(). This data block should contain
+     * complex spectrum data, previously obtained via the forward() function.
+     */
+    void sqr(double *const p) const
+    {
+        p[0] *= p[0];
+        p[1] *= p[1];
 
-	#endif // R8B_IPP
-	}
+#if R8B_IPP
+        ippsSqr_64fc((Ipp64fc *)(p + 2), (Ipp64fc *)(p + 2), (Len >> 1) - 1);
+#else
+        int i = 2;
 
-	/**
-	 * Function is similar to the multiplyBlocks() function, but instead of
-	 * replacing data in the output buffer, the data is summed with the output
-	 * buffer.
-	 *
-	 * @param ip1 Input data block 1.
-	 * @param ip2 Input data block 2.
-	 * @param[out] op Output data block, should not be equal to ip1 nor ip2.
-	 */
-
-	void multiplyBlocksAdd( const double* const ip1, const double* const ip2,
-		double* const op ) const
-	{
-		op[ 0 ] += ip1[ 0 ] * ip2[ 0 ];
-		op[ 1 ] += ip1[ 1 ] * ip2[ 1 ];
-
-	#if R8B_IPP
-
-		ippsAddProduct_64fc( (const Ipp64fc*) ( ip1 + 2 ),
-			(const Ipp64fc*) ( ip2 + 2 ), (Ipp64fc*) ( op + 2 ),
-			( Len >> 1 ) - 1 );
-
-	#else // R8B_IPP
-
-		int i = 2;
-
-		while( i < Len )
-		{
-			op[ i ] += ip1[ i ] * ip2[ i ] - ip1[ i + 1 ] * ip2[ i + 1 ];
-			op[ i + 1 ] += ip1[ i ] * ip2[ i + 1 ] + ip1[ i + 1 ] * ip2[ i ];
-			i += 2;
-		}
-
-	#endif // R8B_IPP
-	}
-
-	/**
-	 * Function multiplies two complex-valued data blocks in-place. Length of
-	 * both data blocks should be equal to *this object's block length. Blocks
-	 * should have been produced with the forward() function of *this object.
-	 *
-	 * @param ip Input data block 1.
-	 * @param[in,out] op Output/input data block 2.
-	 */
-
-	void multiplyBlocks( const double* const ip, double* const op ) const
-	{
-	#if R8B_IPP
-
-		ippsMulPerm_64f( (Ipp64f*) op, (Ipp64f*) ip, (Ipp64f*) op, Len );
-
-	#else // R8B_IPP
-
-		op[ 0 ] *= ip[ 0 ];
-		op[ 1 ] *= ip[ 1 ];
-
-		int i = 2;
-
-		while( i < Len )
-		{
-			const double t = op[ i ] * ip[ i ] - op[ i + 1 ] * ip[ i + 1 ];
-			op[ i + 1 ] = op[ i ] * ip[ i + 1 ] + op[ i + 1 ] * ip[ i ];
-			op[ i ] = t;
-			i += 2;
-		}
-
-	#endif // R8B_IPP
-	}
-
-	/**
-	 * Function multiplies two complex-valued data blocks in-place,
-	 * considering that the "ip" block contains "zero-phase" response. Length
-	 * of both data blocks should be equal to *this object's block length.
-	 * Blocks should have been produced with the forward() function of *this
-	 * object.
-	 *
-	 * @param ip Input data block 1, "zero-phase" response.
-	 * @param[in,out] op Output/input data block 2.
-	 */
-
-	void multiplyBlocksZ( const double* const ip, double* const op ) const
-	{
-		op[ 0 ] *= ip[ 0 ];
-		op[ 1 ] *= ip[ 1 ];
-
-		int i = 2;
-
-		while( i < Len )
-		{
-			op[ i ] *= ip[ i ];
-			op[ i + 1 ] *= ip[ i ];
-			i += 2;
-		}
-	}
-
-	/**
-	 * Function performs in-place spectrum squaring. May cause aliasing
-	 * if the filter was not zero-padded before the forward() function call.
-	 *
-	 * @param[in,out] p Pointer to data block to square, length should be
-	 * equal to *this object's getLen(). This data block should contain
-	 * complex spectrum data, previously obtained via the forward() function.
-	 */
-
-	void sqr( double* const p ) const
-	{
-		p[ 0 ] *= p[ 0 ];
-		p[ 1 ] *= p[ 1 ];
-
-	#if R8B_IPP
-
-		ippsSqr_64fc( (Ipp64fc*) ( p + 2 ), (Ipp64fc*) ( p + 2 ),
-			( Len >> 1 ) - 1 );
-
-	#else // R8B_IPP
-
-		int i = 2;
-
-		while( i < Len )
-		{
-			const double r = p[ i ] * p[ i ] - p[ i + 1 ] * p[ i + 1 ];
-			p[ i + 1 ] = p[ i ] * ( p[ i + 1 ] + p[ i + 1 ]);
-			p[ i ] = r;
-			i += 2;
-		}
-
-	#endif // R8B_IPP
-	}
+        while (i < Len)
+        {
+            const double r = p[i] * p[i] - p[i + 1] * p[i + 1];
+            p[i + 1] = p[i] * (p[i + 1] + p[i + 1]);
+            p[i] = r;
+            i += 2;
+        }
+#endif
+    }
 
 private:
-	int LenBits; ///< Length of FFT block (expressed as Nth power of 2).
-		///<
-	int Len; ///< Length of FFT block (number of real values).
-		///<
-	double InvMulConst; ///< Inverse FFT multiply constant.
-		///<
-	CDSPRealFFT* Next; ///< Next object in a singly-linked list.
-		///<
+    R8BNOCTOR(CDSPRealFFT);
 
-	#if R8B_IPP
-		IppsFFTSpec_R_64f* SPtr; ///< Pointer to initialized data buffer
-			///< to be passed to IPP's FFT functions.
-			///<
-		CFixedBuffer< unsigned char > SpecBuffer; ///< Working buffer.
-			///<
-		CFixedBuffer< unsigned char > WorkBuffer; ///< Working buffer.
-			///<
-	#else // R8B_IPP
-		CFixedBuffer< int > wi; ///< Working buffer (ints).
-			///<
-		CFixedBuffer< double > wd; ///< Working buffer (doubles).
-			///<
-	#endif // R8B_IPP
+    friend class CDSPRealFFTKeeper;
 
-	/**
-	 * A simple class that keeps the pointer to the object and deletes it
-	 * automatically.
-	 */
+    int LenBits; //Length of FFT block (expressed as Nth power of 2).
+    int Len; //Length of FFT block (number of real values).
+    double InvMulConst; //Inverse FFT multiply constant.
+    CDSPRealFFT *Next; //Next object in a singly-linked list.
 
-	class CObjKeeper
-	{
-		R8BNOCTOR( CObjKeeper );
+#if R8B_IPP
+    IppsFFTSpec_R_64f *SPtr; //Pointer to initialized data buffer to be passed to IPP's FFT functions.
+    CFixedBuffer<unsigned char> SpecBuffer; //Working buffer.
+    CFixedBuffer<unsigned char> WorkBuffer; //Working buffer.
+#else
+    CFixedBuffer<int> wi; //Working buffer (ints).
+    CFixedBuffer<double> wd; //Working buffer (doubles).
+#endif
 
-	public:
-		CObjKeeper()
-			: Object( NULL )
-		{
-		}
+    /**
+     * A simple class that keeps the pointer to the object and deletes it
+     * automatically.
+     */
 
-		~CObjKeeper()
-		{
-			delete Object;
-		}
+    class CObjKeeper
+    {
+    public:
+        CObjKeeper()
+            : Object(nullptr)
+        {
+        }
 
-		CObjKeeper& operator = ( CDSPRealFFT* const aObject )
-		{
-			Object = aObject;
-			return( *this );
-		}
+        ~CObjKeeper()
+        {
+            delete Object;
+        }
 
-		operator CDSPRealFFT* () const
-		{
-			return( Object );
-		}
+        CObjKeeper &operator=(CDSPRealFFT *const aObject)
+        {
+            Object = aObject;
+            return *this;
+        }
 
-	private:
-		CDSPRealFFT* Object; ///< FFT object being kept.
-			///<
-	};
+        operator CDSPRealFFT *() const
+        {
+            return Object;
+        }
 
-	CDSPRealFFT()
-	{
-	}
+    private:
+        CDSPRealFFT *Object; //FFT object being kept.
 
-	/**
-	 * Constructor initializes FFT object.
-	 *
-	 * @param aLenBits The length of FFT block (Nth power of 2), specifies the
-	 * number of real values in a block. Values from 1 to 30 inclusive are
-	 * supported.
-	 */
+        R8BNOCTOR(CObjKeeper);
+    };
 
-	CDSPRealFFT( const int aLenBits )
-		: LenBits( aLenBits )
-		, Len( 1 << aLenBits )
-	#if R8B_IPP
-		, InvMulConst( 1.0 / Len )
-	#else // R8B_IPP
-		, InvMulConst( 2.0 / Len )
-	#endif // R8B_IPP
-	{
-	#if R8B_IPP
+    CDSPRealFFT()
+    {
+    }
 
-		int SpecSize;
-		int SpecBufferSize;
-		int BufferSize;
+    /**
+     * Constructor initializes FFT object.
+     *
+     * @param aLenBits The length of FFT block (Nth power of 2), specifies the
+     * number of real values in a block. Values from 1 to 30 inclusive are
+     * supported.
+     */
+    CDSPRealFFT(int aLenBits) :
+        LenBits(aLenBits),
+		Len(1 << aLenBits),
+#if R8B_IPP
+        InvMulConst(1.0 / Len)
+#else
+        InvMulConst(2.0 / Len)
+#endif
+    {
+#if R8B_IPP
+        int SpecSize;
+        int SpecBufferSize;
+        int BufferSize;
 
-		ippsFFTGetSize_R_64f( LenBits, IPP_FFT_NODIV_BY_ANY,
-			ippAlgHintFast, &SpecSize, &SpecBufferSize, &BufferSize );
+        ippsFFTGetSize_R_64f(LenBits, IPP_FFT_NODIV_BY_ANY, ippAlgHintFast, &SpecSize, &SpecBufferSize, &BufferSize);
 
-		CFixedBuffer< unsigned char > InitBuffer( SpecBufferSize );
-		SpecBuffer.alloc( SpecSize );
-		WorkBuffer.alloc( BufferSize );
+        CFixedBuffer<unsigned char> InitBuffer(SpecBufferSize);
+        SpecBuffer.alloc(SpecSize);
+        WorkBuffer.alloc(BufferSize);
 
-		ippsFFTInit_R_64f( &SPtr, LenBits, IPP_FFT_NODIV_BY_ANY,
-			ippAlgHintFast, SpecBuffer, InitBuffer );
+        ippsFFTInit_R_64f(&SPtr, LenBits, IPP_FFT_NODIV_BY_ANY, ippAlgHintFast, SpecBuffer, InitBuffer);
+#else
+        wi.alloc((int)ceil(2.0 + sqrt((double)(Len >> 1))));
+        wi[0] = 0;
+        wd.alloc(Len >> 1);
+#endif
+    }
 
-	#else // R8B_IPP
-
-		wi.alloc( (int) ceil( 2.0 + sqrt( (double) ( Len >> 1 ))));
-		wi[ 0 ] = 0;
-		wd.alloc( Len >> 1 );
-
-	#endif // R8B_IPP
-	}
-
-	~CDSPRealFFT()
-	{
-		delete Next;
-	}
+    ~CDSPRealFFT()
+    {
+        delete Next;
+    }
 };
 
 /**
@@ -404,130 +355,114 @@ private:
  * The allocated FFT objects are placed on the global static list of objects
  * for future reuse instead of deallocation.
  */
-
 class CDSPRealFFTKeeper : public R8B_BASECLASS
 {
-	R8BNOCTOR( CDSPRealFFTKeeper );
-
 public:
-	CDSPRealFFTKeeper()
-		: Object( NULL )
-	{
-	}
+    CDSPRealFFTKeeper()
+        : Object(nullptr)
+    {
+    }
 
-	/**
-	 * Function acquires FFT object with the specified block length.
-	 *
-	 * @param LenBits The length of FFT block (Nth power of 2), in the range
-	 * [1; 30] inclusive, specifies the number of real values in a FFT block.
-	 */
+    /**
+     * Function acquires FFT object with the specified block length.
+     *
+     * @param LenBits The length of FFT block (Nth power of 2), in the range
+     * [1; 30] inclusive, specifies the number of real values in a FFT block.
+     */
+    CDSPRealFFTKeeper(const int LenBits)
+    {
+        Object = acquire(LenBits);
+    }
 
-	CDSPRealFFTKeeper( const int LenBits )
-	{
-		Object = acquire( LenBits );
-	}
+    ~CDSPRealFFTKeeper()
+    {
+        if (Object != nullptr)
+            release(Object);
+    }
 
-	~CDSPRealFFTKeeper()
-	{
-		if( Object != NULL )
-		{
-			release( Object );
-		}
-	}
+    /**
+     * @return Pointer to the acquired FFT object.
+     */
+    const CDSPRealFFT *operator->() const
+    {
+        R8BASSERT(Object != nullptr);
 
-	/**
-	 * @return Pointer to the acquired FFT object.
-	 */
+        return Object;
+    }
 
-	const CDSPRealFFT* operator -> () const
-	{
-		R8BASSERT( Object != NULL );
+    /**
+     * Function acquires FFT object with the specified block length. This
+     * function can be called any number of times.
+     *
+     * @param LenBits The length of FFT block (Nth power of 2), in the range
+     * [1; 30] inclusive, specifies the number of real values in a FFT block.
+     */
+    void init(const int LenBits)
+    {
+        if (Object != nullptr)
+        {
+            if (Object->LenBits == LenBits)
+                return;
 
-		return( Object );
-	}
+            release(Object);
+        }
 
-	/**
-	 * Function acquires FFT object with the specified block length. This
-	 * function can be called any number of times.
-	 *
-	 * @param LenBits The length of FFT block (Nth power of 2), in the range
-	 * [1; 30] inclusive, specifies the number of real values in a FFT block.
-	 */
+        Object = acquire(LenBits);
+    }
 
-	void init( const int LenBits )
-	{
-		if( Object != NULL )
-		{
-			if( Object -> LenBits == LenBits )
-			{
-				return;
-			}
-
-			release( Object );
-		}
-
-		Object = acquire( LenBits );
-	}
-
-	/**
-	 * Function releases a previously acquired FFT object.
-	 */
-
-	void reset()
-	{
-		if( Object != NULL )
-		{
-			release( Object );
-			Object = NULL;
-		}
-	}
+    /**
+     * Function releases a previously acquired FFT object.
+     */
+    void reset()
+    {
+        if (Object != nullptr)
+        {
+            release(Object);
+            Object = nullptr;
+        }
+    }
 
 private:
-	CDSPRealFFT* Object; ///< FFT object.
-		///<
+    CDSPRealFFT *Object; //FFT object.
+    static CSyncObject StateSync; //FFTObjects synchronizer.
+    static CDSPRealFFT::CObjKeeper FFTObjects[]; //Pool of FFT objects of various lengths.
 
-	static CSyncObject StateSync; ///< FFTObjects synchronizer.
-		///<
-	static CDSPRealFFT :: CObjKeeper FFTObjects[]; ///< Pool of FFT objects of
-		///< various lengths.
-		///<
+    /**
+     * Function acquires FFT object from the global pool.
+     *
+     * @param LenBits FFT block length (expressed as Nth power of 2).
+     */
+    CDSPRealFFT *acquire(const int LenBits)
+    {
+        R8BASSERT(LenBits > 0 && LenBits <= 30);
 
-	/**
-	 * Function acquires FFT object from the global pool.
-	 *
-	 * @param LenBits FFT block length (expressed as Nth power of 2).
-	 */
+        R8BSYNC(StateSync);
 
-	CDSPRealFFT* acquire( const int LenBits )
-	{
-		R8BASSERT( LenBits > 0 && LenBits <= 30 );
+        if (FFTObjects[LenBits] == nullptr)
+        {
+            return new CDSPRealFFT(LenBits);
+        }
 
-		R8BSYNC( StateSync );
+        CDSPRealFFT *ffto = FFTObjects[LenBits];
+        FFTObjects[LenBits] = ffto->Next;
 
-		if( FFTObjects[ LenBits ] == NULL )
-		{
-			return( new CDSPRealFFT( LenBits ));
-		}
+        return ffto;
+    }
 
-		CDSPRealFFT* ffto = FFTObjects[ LenBits ];
-		FFTObjects[ LenBits ] = ffto -> Next;
+    /**
+     * Function releases a previously acquired FFT object.
+     *
+     * @param ffto FFT object to release.
+     */
+    void release(CDSPRealFFT *const ffto)
+    {
+        R8BSYNC(StateSync);
 
-		return( ffto );
-	}
+        ffto->Next = FFTObjects[ffto->LenBits];
+        FFTObjects[ffto->LenBits] = ffto;
+    }
 
-	/**
-	 * Function releases a previously acquired FFT object.
-	 *
-	 * @param ffto FFT object to release.
-	 */
-
-	void release( CDSPRealFFT* const ffto )
-	{
-		R8BSYNC( StateSync );
-
-		ffto -> Next = FFTObjects[ ffto -> LenBits ];
-		FFTObjects[ ffto -> LenBits ] = ffto;
-	}
+    R8BNOCTOR(CDSPRealFFTKeeper);
 };
 
 /**
@@ -549,105 +484,89 @@ private:
  * be performed or not. Such multiplication returns the gain of the signal to
  * its original value. This parameter can be set to "false" if normalization
  * of the resulting filter kernel is planned to be used.
- * @param[out] DCGroupDelay If not NULL, this variable receives group delay
+ * @param[out] DCGroupDelay If not nullptr, this variable receives group delay
  * at DC offset, in samples (can be a non-integer value).
  */
-
-inline void calcMinPhaseTransform( double* const Kernel, const int KernelLen,
-	const int LenMult = 2, const bool DoFinalMul = true,
-	double* const DCGroupDelay = NULL )
+inline void calcMinPhaseTransform(double *const Kernel, int KernelLen,
+                                  int LenMult = 2, bool DoFinalMul = true,
+                                  double *const DCGroupDelay = nullptr)
 {
-	R8BASSERT( KernelLen > 0 );
-	R8BASSERT( LenMult >= 2 );
+    R8BASSERT(KernelLen > 0);
+    R8BASSERT(LenMult >= 2);
 
-	const int LenBits = getBitOccupancy(( KernelLen * LenMult ) - 1 );
-	const int Len = 1 << LenBits;
-	const int Len2 = Len >> 1;
-	int i;
+    const int LenBits = getBitOccupancy((KernelLen * LenMult) - 1);
+    const int Len = 1 << LenBits;
+    const int Len2 = Len >> 1;
 
-	CFixedBuffer< double > ip( Len );
-	CFixedBuffer< double > ip2( Len2 + 1 );
+    CFixedBuffer<double> ip(Len);
+    CFixedBuffer<double> ip2(Len2 + 1);
 
-	memcpy( &ip[ 0 ], Kernel, KernelLen * sizeof( double ));
-	memset( &ip[ KernelLen ], 0, ( Len - KernelLen ) * sizeof( double ));
+    memcpy(&ip[0], Kernel, KernelLen * sizeof(double));
+    memset(&ip[KernelLen], 0, (Len - KernelLen) * sizeof(double));
 
-	CDSPRealFFTKeeper ffto( LenBits );
-	ffto -> forward( ip );
+    CDSPRealFFTKeeper ffto(LenBits);
+    ffto->forward(ip);
 
-	// Create the "log |c|" spectrum while saving the original power spectrum
-	// in the "ip2" buffer.
+    // Create the "log |c|" spectrum while saving the original power spectrum in the "ip2" buffer.
+    ip2[0] = ip[0];
+    ip[0] = log(abs(ip[0]) + 1e-50);
+    ip2[Len2] = ip[1];
+    ip[1] = log(abs(ip[1]) + 1e-50);
 
-	ip2[ 0 ] = ip[ 0 ];
-	ip[ 0 ] = log( fabs( ip[ 0 ]) + 1e-50 );
-	ip2[ Len2 ] = ip[ 1 ];
-	ip[ 1 ] = log( fabs( ip[ 1 ]) + 1e-50 );
+    for (int i = 1; i < Len2; i++)
+    {
+        ip2[i] = sqrt(ip[i * 2] * ip[i * 2] + ip[i * 2 + 1] * ip[i * 2 + 1]);
 
-	for( i = 1; i < Len2; i++ )
-	{
-		ip2[ i ] = sqrt( ip[ i * 2 ] * ip[ i * 2 ] +
-			ip[ i * 2 + 1 ] * ip[ i * 2 + 1 ]);
+        ip[i * 2] = log(ip2[i] + 1e-50);
+        ip[i * 2 + 1] = 0.0;
+    }
 
-		ip[ i * 2 ] = log( ip2[ i ] + 1e-50 );
-		ip[ i * 2 + 1 ] = 0.0;
-	}
+    // Convert to cepstrum and apply discrete Hilbert transform.
+    ffto->inverse(ip);
 
-	// Convert to cepstrum and apply discrete Hilbert transform.
+    ip[0] = 0.0;
 
-	ffto -> inverse( ip );
+    for (int i = 1; i < Len2; i++)
+        ip[i] *= ffto->getInvMulConst();
 
-	ip[ 0 ] = 0.0;
+    ip[Len2] = 0.0;
 
-	for( i = 1; i < Len2; i++ )
-	{
-		ip[ i ] *= ffto -> getInvMulConst();
-	}
+    for (int i = Len2 + 1; i < Len; i++)
+        ip[i] *= -ffto->getInvMulConst();
 
-	ip[ Len2 ] = 0.0;
+    // Convert Hilbert-transformed cepstrum back to the "log |c|" spectrum and
+    // perform its exponentiation, multiplied by the power spectrum previously saved in the "ip2" buffer.
+    ffto->forward(ip);
 
-	for( i = Len2 + 1; i < Len; i++ )
-	{
-		ip[ i ] *= -ffto -> getInvMulConst();
-	}
+    ip[0] = ip2[0];
+    ip[1] = ip2[Len2];
 
-	// Convert Hilbert-transformed cepstrum back to the "log |c|" spectrum and
-	// perform its exponentiation, multiplied by the power spectrum previously
-	// saved in the "ip2" buffer.
+    for (i = 1; i < Len2; i++)
+    {
+        const double p = ip2[i];
+        ip[i * 2 + 0] = cos(ip[i * 2 + 1]) * p;
+        ip[i * 2 + 1] = sin(ip[i * 2 + 1]) * p;
+    }
 
-	ffto -> forward( ip );
+    ffto->inverse(ip);
 
-	ip[ 0 ] = ip2[ 0 ];
-	ip[ 1 ] = ip2[ Len2 ];
+    if (DoFinalMul)
+    {
+        for (i = 0; i < KernelLen; i++)
+            Kernel[i] = ip[i] * ffto->getInvMulConst();
+    }
+    else
+    {
+        memcpy(&Kernel[0], &ip[0], KernelLen * sizeof(double));
+    }
 
-	for( i = 1; i < Len2; i++ )
-	{
-		const double p = ip2[ i ];
-		ip[ i * 2 + 0 ] = cos( ip[ i * 2 + 1 ]) * p;
-		ip[ i * 2 + 1 ] = sin( ip[ i * 2 + 1 ]) * p;
-	}
-
-	ffto -> inverse( ip );
-
-	if( DoFinalMul )
-	{
-		for( i = 0; i < KernelLen; i++ )
-		{
-			Kernel[ i ] = ip[ i ] * ffto -> getInvMulConst();
-		}
-	}
-	else
-	{
-		memcpy( &Kernel[ 0 ], &ip[ 0 ], KernelLen * sizeof( double ));
-	}
-
-	if( DCGroupDelay != NULL )
-	{
-		double tmp;
-
-		calcFIRFilterResponseAndGroupDelay( Kernel, KernelLen, 0.0,
-			tmp, tmp, *DCGroupDelay );
-	}
+    if (DCGroupDelay != nullptr)
+    {
+        double tmp;
+        calcFIRFilterResponseAndGroupDelay(Kernel, KernelLen, 0.0,  tmp, tmp, *DCGroupDelay);
+    }
 }
 
-} // namespace r8b
+}
 
 #endif // VOX_CDSPREALFFT_INCLUDED

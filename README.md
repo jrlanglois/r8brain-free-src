@@ -124,7 +124,7 @@ The memory footprint is quite modest.
 Version 1.7:
 
 * Improved sample timing precision.
-* Increased CDSPResampler :: ConvCountMax to 28 to support a lot wider
+* Increased CDSPResampler::ConvCountMax to 28 to support a lot wider
 resampling ratios.
 * Added `bench` tools.
 * Removed getInLenBeforeOutStart() due to incorrect calculation.

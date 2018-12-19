@@ -1,5 +1,3 @@
-//$ nocpp
-
 /**
  * @file r8bsrc.h
  *
@@ -28,7 +26,7 @@
  * Resampler object handle.
  */
 
-typedef void* CR8BResampler;
+typedef void *CR8BResampler;
 
 /**
  * Possible resampler object resolutions.
@@ -36,16 +34,10 @@ typedef void* CR8BResampler;
 
 enum ER8BResamplerRes
 {
-	r8brr16 = 0, ///< 16-bit precision resampler.
-		///<
-	r8brr16IR = 1, ///< 16-bit precision resampler for impulse responses.
-		///<
-	r8brr24 = 2 ///< 24-bit precision resampler (including 32-bit floating
-		///< point).
-		///<
+    r8brr16 = 0, 	//16-bit precision resampler.
+    r8brr16IR = 1, 	//16-bit precision resampler for impulse responses.
+    r8brr24 = 2 	//24-bit precision resampler (including 32-bit floating point).
 };
-
-extern "C" {
 
 /**
  * Function creates a new linear-phase resampler object.
@@ -60,10 +52,8 @@ extern "C" {
  * the input buffer itself for intermediate sample data storage.
  * @param Res Resampler's required resolution.
  */
-
-CR8BResampler _cdecl r8b_create( const double SrcSampleRate,
-	const double DstSampleRate, const int MaxInLen,
-	const double ReqTransBand, const ER8BResamplerRes Res );
+CR8BResampler r8b_create(double SrcSampleRate, double DstSampleRate, int MaxInLen,
+                         double ReqTransBand, ER8BResamplerRes Res);
 
 /**
  * Function deletes a resampler previously created via the r8b_create()
@@ -71,8 +61,7 @@ CR8BResampler _cdecl r8b_create( const double SrcSampleRate,
  *
  * @param rs Resampler object to delete.
  */
-
-void _cdecl r8b_delete( CR8BResampler const rs );
+void r8b_delete(CR8BResampler const rs);
 
 /**
  * Function clears (resets) the state of the resampler object and returns it
@@ -81,8 +70,7 @@ void _cdecl r8b_delete( CR8BResampler const rs );
  *
  * @param rs Resampler object to clear.
  */
-
-void _cdecl r8b_clear( CR8BResampler const rs );
+void r8b_clear(CR8BResampler const rs);
 
 /**
  * Function performs sample rate conversion.
@@ -110,10 +98,6 @@ void _cdecl r8b_clear( CR8BResampler const rs );
  * buffer, it is suggested to check the returned number of samples so that no
  * overflow of the bigger output buffer happens.
  */
-
-int _cdecl r8b_process( CR8BResampler const rs, double* const ip0, int l,
-	double*& op0 );
-
-} // extern "C"
+int r8b_process(CR8BResampler const rs, double *const ip0, int l, double *&op0);
 
 #endif // R8BSRC_INCLUDED
